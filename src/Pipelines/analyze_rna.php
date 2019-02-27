@@ -302,7 +302,7 @@ if (in_array("fu",$steps))
 			}
 		}
 
-		$parser->exec(get_path("STAR-Fusion"), implode(" ", $starfusion_params), true);
+		$parser->execDocker("trinityctat/ctatfusion:1.5.0", "/usr/local/src/STAR-Fusion/STAR-Fusion", implode(" ", $starfusion_params));
 
 		$output_files = [ "{$fusion_tmp_folder}/star-fusion.fusion_predictions.abridged.coding_effect.tsv" => "{$prefix}_var_fusions.tsv" ];
 		if ($input_reads_available)
