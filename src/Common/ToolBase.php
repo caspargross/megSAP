@@ -886,6 +886,62 @@ class ToolBase
 		//return results
 		return array($stdout, $stderr, $return);
 	}
+
+	/**
+	 * Run command in specified docker container.
+	 *
+	 * @param string $image Docker image name
+	 * @param string $command Command to execute in container
+	 * @param string $parameters Parameters to run the command with
+	 * @param boolean $abort_on_error Abort script execution for non-zero return code
+	 * @param boolean $return Return array with command, parameters instead of execution
+	 */
+	function execDocker($image, $command, $parameters, $abort_on_error=true, $return=false)
+	{
+		//TODO automatically use all entries form section 'folders' in settings.ini?
+		$volumes = [
+			sys_get_temp_dir(),
+			get_path("local_data"),
+			get_path("data_folder"),
+			get_path("project_folder")
+		];
+		//add realpath versions in addition
+		foreach ($volumes as $vol)
+		{
+			$vol_real = realpath($vol);
+			if ($vol_real !== rtrim($vol, '/'))
+			{
+				$volumes[] = $vol_real;
+			}
+		}
+
+		$uid = posix_getuid();
+		$wd = getcwd();
+		$cmd = [
+			"docker run",
+			"--interactive",
+			"--user={$uid}",
+			"--workdir={$wd}"
+		];
+		//attach volumes, same path in container as in host
+		foreach ($volumes as $path)
+		{
+			$cmd[] = "--volume={$path}:{$path}";
+		}
+
+		$cmd[] = $image;
+		$cmd[] = $command;
+
+		if ($return)
+		{
+			//for use in pipelines with execPipeline, return an array of style [ command, parameters ]
+			return [ implode(" ", $cmd), $parameters ];
+		}
+		else
+		{
+			return $this->exec(implode(" ", $cmd), $parameters, true, $abort_on_error);
+		}
+	}
 	
 	/**
 		@brief Returns a temporary file name
