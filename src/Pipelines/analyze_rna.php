@@ -132,7 +132,7 @@ if (in_array("ma", $steps) || in_array("fu", $steps))
 		
 		$pipline = array();
 		$pipeline[] = array("zcat", implode(" ", $in_for));
-		$pipeline[] = array(get_path("skewer"), implode(" ", $skewer_params));
+		$pipeline[] = $parser->execDocker("quay.io/biocontainers/skewer:0.2.2--h2d50403_2", "skewer", implode(" ", $skewer_params), false, true);
 		$pipeline[] = array("gzip", "-1 > {$fastq_trimmed1}");
 		$parser->execPipeline($pipeline, "skewer");
 	}
