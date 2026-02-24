@@ -1027,6 +1027,51 @@ function vcf_freebayes($format_col, $sample_col)
 	return array($d1,$f);
 }
 
+function vcf_deepvariant($format_col, $sample_col)
+{
+	$g = explode(":",$format_col);
+	$index_DP = NULL;
+	$index_VAF = NULL;
+	$index_GT = NULL;
+	for($i=0;$i<count($g);++$i)
+	{
+		if($g[$i]=="DP")	$index_DP = $i;
+		if($g[$i]=="VAF")	$index_VAF = $i;
+		if($g[$i]=="GT")	$index_GT = $i;
+	}
+	if(is_null($index_DP) || is_null($index_VAF) ||is_null($index_GT))	trigger_error("Invalid DeepVariant format; either field DP, GT or VAF not available.",E_USER_ERROR);	
+	
+	$s = explode(":",$sample_col);
+
+	if(!is_numeric($s[$index_DP]))	trigger_error("Could not identify numeric depth (".$format_col." ".$sample_col.").",E_USER_ERROR);
+	if(!is_numeric($s[$index_VAF]))	trigger_error("Invalid variant allele frequency (".$format_col." ".$sample_col.").",E_USER_ERROR);	// currently no multiallelic variants supported
+
+	$dp = $s[$index_DP];
+	$fq = $s[$index_VAF];
+	
+	return array($dp,$fq);
+}
+
+function vcf_deepsomatic($info_col, $n_name)
+{
+	$g = explode(";", $info_col);
+	$af = NULL;
+	$dp = NULL;
+	for($i=0;$i<count($g);++$i)
+	{
+		$parts = explode("=", $g[$i]);
+		if ($parts[0] == "{$n_name}_AF") $af = $parts[1];
+		if ($parts[0] == "{$n_name}_DP") $dp = $parts[1];
+	}
+
+	if(is_null($af) || is_null($dp)) trigger_error("Normal AF or DP not annotated in the info filed of Deepsomatic tumor-normal output. (info field: {$info_col})", E_USER_ERROR);
+
+	if(!is_numeric($af)) trigger_error("Invalid allele frequenzy (AF: '".$af."' in info field: '".$info_col."').", E_USER_ERROR);	// currently no multiallelic variants supported
+	if(!is_numeric($dp)) trigger_error("Could not identify numeric depth (DP: '".$dp."' in info field: '".$info_col."').", E_USER_ERROR);
+
+	return array($dp,$af);
+}
+
 function vcf_dragen_var($format_col, $sample_col)
 {
 	$g = explode(":",$format_col);
@@ -1197,6 +1242,31 @@ function get_processed_sample_qc(&$db, $ps, $qc_name_or_accession)
 	$ps_id = get_processed_sample_id($db, $ps);
 	
 	return $db->getValue("SELECT value FROM processed_sample_qc WHERE processed_sample_id='{$ps_id}' AND qc_terms_id={$term_id}", "");
+}
+
+//Returns the value of the given QC term from the file. If default is not set, throws an error if the file does not exist, or does not contain the term.
+function get_qcml_value($qcml_file, $accession, $default=null)
+{
+	if (!file_exists($qcml_file)) 
+	{
+		if (is_null($default)) trigger_error("qcML file does not exists: {$qcml_file}", E_USER_ERROR);
+		return $default;
+	}
+	
+	
+	$value = "";
+	$xml = simplexml_load_file($qcml_file);
+	if ($xml===false) trigger_error("Could not load XML file: $qcml_file", E_USER_ERROR);
+	foreach ($xml->runQuality->qualityParameter as $qp)
+	{
+		if ($qp["accession"]==$accession)
+		{
+			return $qp["value"];
+		}
+	}
+	
+	if (is_null($default)) trigger_error("QC term with ID '{$accession}' not found in qcML file: {$qcml_file}", E_USER_ERROR);
+	return $default;
 }
 
 //Creates a samples header using meta data from NGSD (using $override_map to allow replace NGSD info)
@@ -2202,6 +2272,7 @@ function convert_to_bam_if_cram($filename, $parser, $build, $threads, $tmp_folde
 function is_novaseq_x_run($run_parameters_xml)
 {
 	$xml = simplexml_load_file($run_parameters_xml);
+	if ($xml===false) trigger_error("Could not load XML file: $run_parameters_xml", E_USER_ERROR);
 	if(empty($xml->InstrumentType)) return false; //No entry => e.g. NovaSeq 6000
 	$instrument_type = $xml->InstrumentType;
 	if(($instrument_type == "NovaSeqXPlus") || ($instrument_type == "NovaSeqX")) return true;
@@ -2509,6 +2580,24 @@ function get_fastq_read_count($fastq_files)
 		$read_count += $rc_current_file;
 	}
 	return $read_count;
+}
+
+//Checks if a BED file is sorted
+function bed_is_sorted($filename)
+{
+	$is_sorted = "";
+	list($stdout) = execApptainer("ngs-bits", "BedInfo", "-in {$filename} -nomerge", [$filename]);
+	foreach($stdout as $line)
+	{
+		$line = trim($line);
+		if (starts_with($line, "Is sorted"))
+		{
+			$is_sorted = trim(explode(":", $line, 2)[1]);
+		}
+	}
+	if ($is_sorted=="yes") return true;
+	if ($is_sorted=="no") return false;
+	trigger_error("Could not determine if file is sorted: $filename", E_USER_ERROR);
 }
 
 ?>

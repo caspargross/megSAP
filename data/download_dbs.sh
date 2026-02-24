@@ -231,6 +231,18 @@ wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/Ashkenazim
 zcat $dbs/GIAB/NA24385_CMRG/high_conf_variants.vcf.gz | singularity exec $ngsbits VcfBreakMulti | singularity exec -B $genome_dir $ngsbits VcfFilter -remove_invalid -ref $genome | singularity exec -B $genome_dir $ngsbits VcfLeftNormalize -stream -ref $genome | singularity exec $ngsbits VcfStreamSort | singularity exec $htslib bgzip > $dbs/GIAB/NA24385_CMRG/high_conf_variants_normalized.vcf.gz
 singularity exec $htslib tabix -p vcf $dbs/GIAB/NA24385_CMRG/high_conf_variants_normalized.vcf.gz
 
+#download and normalize HCC1395 reference data
+mkdir -p $dbs/GIAB/HCC1395/
+wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/seqc/Somatic_Mutation_WG/release/latest/high-confidence_sINDEL_in_HC_regions_v1.2.1.vcf.gz -O $dbs/GIAB/HCC1395/high_conf_variants_INDEL.vcf.gz
+wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/seqc/Somatic_Mutation_WG/release/latest/high-confidence_sSNV_in_HC_regions_v1.2.1.vcf.gz -O $dbs/GIAB/HCC1395/high_conf_variants_SNV.vcf.gz
+wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/seqc/Somatic_Mutation_WG/release/latest/High-Confidence_Regions_v1.2.bed -O $dbs/GIAB/HCC1395/high_conf_regions.bed
+singularity exec -B $dbs/GIAB/HCC1395/ $ngsbits VcfAdd -in $dbs/GIAB/HCC1395/high_conf_variants_INDEL.vcf.gz $dbs/GIAB/HCC1395/high_conf_variants_SNV.vcf.gz -out $dbs/GIAB/HCC1395/high_conf_variants.vcf
+singularity exec -B $dbs/GIAB/HCC1395/ $ngsbits VcfSort -in $dbs/GIAB/HCC1395/high_conf_variants.vcf -out $dbs/GIAB/HCC1395/high_conf_variants.vcf
+singularity exec -B $dbs/GIAB/HCC1395/ $htslib bgzip $dbs/GIAB/HCC1395/high_conf_variants.vcf
+singularity exec -B $dbs/GIAB/HCC1395/ $htslib tabix $dbs/GIAB/HCC1395/high_conf_variants.vcf.gz
+zcat $dbs/GIAB/HCC1395/high_conf_variants.vcf.gz | singularity exec $ngsbits VcfBreakMulti | singularity exec -B $genome_dir $ngsbits VcfFilter -remove_invalid -ref $genome | singularity exec -B $genome_dir $ngsbits VcfLeftNormalize -stream -ref $genome | singularity exec $ngsbits VcfStreamSort | singularity exec $htslib bgzip > $dbs/GIAB/HCC1395/high_conf_variants_normalized.vcf.gz
+singularity exec -B $dbs/GIAB/HCC1395/ $htslib tabix $dbs/GIAB/HCC1395/high_conf_variants_normalized.vcf.gz
+
 #download reference genome for orad
 cd $dbs
 mkdir -p oradata
@@ -252,6 +264,16 @@ cd $dbs
 mkdir -p tandem-repeats
 cd tandem-repeats
 wget -O human_GRCh38_no_alt_analysis_set.trf.bed https://raw.githubusercontent.com/fritzsedlazeck/Sniffles/fdf6e6d334353a06872fe98f74fe68cc9a9a7d1f/annotations/human_GRCh38_no_alt_analysis_set.trf.bed
+
+#download illumina EPIC ids:
+cd $dbs
+mkdir -p illumina-epicids
+cd illumina-epicids
+wget -O InfiniumMethylationEPICv2.0ProductFiles.zip "https://support.illumina.com/content/dam/illumina-support/documents/downloads/productfiles/methylationepic/InfiniumMethylationEPICv2.0ProductFiles(ZIPFormat).zip"
+unzip -d . InfiniumMethylationEPICv2.0ProductFiles.zip
+cp "MethylationEPIC v2.0 Files/EPIC-8v2-0_A1.csv" .
+rm -r "MethylationEPIC v2.0 Files"
+rm InfiniumMethylationEPICv2.0ProductFiles.zip
 
 # # install OMIM (you might need a license; production NGSD has to be available and initialized)
 # cd $dbs

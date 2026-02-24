@@ -13,8 +13,8 @@ $parser->addInfile("folder", "Analysis data folder.", false);
 $parser->addString("name", "Base file name, typically the processed sample ID (e.g. 'GS120001_01').", false);
 //optional
 $parser->addInfile("system",  "Processing system INI file (automatically determined from NGSD if 'name' is a valid processed sample name).", true);
-$steps_all = array("ma", "vc", "cn", "sv", "ph", "re", "me", "pg", "an", "db");
-$parser->addString("steps", "Comma-separated list of steps to perform:\nma=mapping, vc=variant calling, cn=copy-number analysis, sv=structural-variant analysis, ph=phasing, re=repeat expansions calling, me=methylation calling, pg=paralogous genes calling, an=annotation, db=import into NGSD.", true, implode(",", $steps_all));
+$steps_all = array("ma", "vc", "cn", "sv", "ph", "re", "pg", "an", "me", "db");
+$parser->addString("steps", "Comma-separated list of steps to perform:\nma=mapping, vc=variant calling, cn=copy-number analysis, sv=structural-variant analysis, ph=phasing, re=repeat expansions calling, pg=paralogous genes calling, an=annotation, me=methylation calling, db=import into NGSD.", true, implode(",", $steps_all));
 $parser->addInt("threads", "The maximum number of threads used.", true, 2);
 $parser->addFlag("no_sync", "Skip syncing annotation databases and genomes to the local tmp folder (Needed only when starting many short-running jobs in parallel).");
 $parser->addFlag("no_gender_check", "Skip gender check (done between mapping and variant calling).");
@@ -24,6 +24,7 @@ $parser->addFlag("gpu", "Use GPU supported tools where possible (currently DeepV
 $parser->addFloat("min_af", "Minimum VAF cutoff used for variant calling (DeepVariant 'min-alternate-fraction' parameter).", true, 0.1);
 $parser->addFloat("min_bq", "Minimum base quality used for variant calling (DeepVariant 'min-base-quality' parameter).", true, 10);
 $parser->addFloat("min_mq", "Minimum mapping quality used for variant calling (DeepVariant 'min-mapping-quality' parameter).", true, 20);
+$parser->addFlag("test", "Run pipeline in test mode (e.g. use hard-coded cohort for methylation analysis)");
 extract($parser->parse($argv));
 
 // create logfile in output folder if no filepath is provided:
@@ -42,6 +43,8 @@ $parser->logServerEnvronment();
 $sys = load_system($system, $name);
 $build = $sys['build'];
 $platform = get_longread_sequencing_platform($sys['name_short']);
+trigger_error("Determined platform (ONT or PacBio): {$platform}", E_USER_NOTICE);
+if ($test) trigger_error("Pipeline running in test mode!", E_USER_WARNING);
 
 //check steps
 $steps = explode(",", $steps);
@@ -94,6 +97,7 @@ $lowcov_file = $folder."/".$name."_".$sys["name_short"]."_lowcov.bed";
 //methylation
 $modkit_track = $folder."/".$name."_modkit_track.bed.gz";
 $modkit_summary = $folder."/".$name."_modkit_summary.txt";
+$epigen_tsv = $folder."/".$name."_epigen.tsv";
 //variant calling
 $vcf_file = $folder."/".$name."_var.vcf.gz";
 $vcf_file_annotated = $folder."/".$name."_var_annotated.vcf.gz";
@@ -261,7 +265,7 @@ if (in_array("ma", $steps))
 	if (get_path("delete_fastq_files"))
 	{
 		//check if project overwrites the settings
-		$preserve_fastqs = false;
+		$preserve_fastqs = true;
 		if (db_is_enabled("NGSD"))
 		{
 			$db = DB::getInstance("NGSD", false);
@@ -373,7 +377,7 @@ if(db_is_enabled("NGSD") && !$no_gender_check)
 //variant calling
 if (in_array("vc", $steps))
 {
-	if ($platform == "PB")
+	if ($platform == "PB") //Pacbio
 	{
 		$args = [];
 		$args[] = "-model_type PACBIO";
@@ -388,17 +392,12 @@ if (in_array("vc", $steps))
 		$args[] = "-min_bq ".$min_bq;
 		$args[] = "-add_sample_header";
 		$args[] = "-name ".$name;
-
-		if ($gpu)
-		{
-			$args[] = "-gpu";
-		}
-
+		if ($gpu) $args[] = "-gpu";
+		
 		$parser->execTool("Tools/vc_deepvariant.php", implode(" ", $args));
 	}
-	else
+	else //ONT
 	{
-
 		//determine basecall model
 		$basecall_model = get_basecall_model($used_bam_or_cram);
 		$basecall_model_path = "";
@@ -420,10 +419,10 @@ if (in_array("vc", $steps))
 			}
 			else
 			{
-				trigger_error("Unsupported processing system '".$sys["name_short"]."' provided!", E_USER_ERROR);
+				trigger_error("Could not determine Clair basecall model for processing system '".$sys["name_short"]."'!", E_USER_ERROR);
 			}
 
-			trigger_error("No basecall info found in BAM file. Using default model at '{$basecall_model_path}'.", E_USER_NOTICE);
+			trigger_error("No basecall info found in BAM file. Using default model based on processing system: '{$basecall_model_path}'.", E_USER_NOTICE);
 		}
 		//special handling of old models
 		else if ($basecall_model == "dna_r10.4.1_e8.2_400bps_hac@v3.5.2")
@@ -565,7 +564,7 @@ if (in_array("cn", $steps))
 if (in_array("sv", $steps))
 {
 	//run Sniffles
-	$parser->execTool("Tools/vc_sniffles.php", "-bam {$used_bam_or_cram} -sample_ids {$name} -out {$sv_vcf_file} -threads {$threads} -build {$build} --log ".$parser->getLogFile());
+	$parser->execTool("Tools/vc_sniffles.php", "-bam {$used_bam_or_cram} -include_mosaic -sample_ids {$name} -out {$sv_vcf_file} -threads {$threads} -build {$build} --log ".$parser->getLogFile());
 }
 
 //phasing
@@ -706,16 +705,6 @@ if (in_array("re", $steps))
 	//Repeat-expansion calling using straglr
 	$variant_catalog = repository_basedir()."/data/repeat_expansions/straglr_variant_catalog_grch38.bed";
 	$parser->execTool("Tools/vc_straglr.php", "-include_partials -in {$used_bam_or_cram} -out {$straglr_file} -loci {$variant_catalog} -threads {$threads} -build {$build} --log ".$parser->getLogFile());
-}
-
-// methylation calling
-if (in_array("me", $steps))
-{
-	if (!contains_methylation($used_bam_or_cram)) trigger_error("BAM file doesn't contain methylation info! Skipping step 'me'", E_USER_WARNING);
-	else
-	{
-		$parser->execTool("Tools/create_methyl_plot.php", "-folder {$folder} -name {$name} ".(ends_with($used_bam_or_cram, ".bam")?"-local_bam {$used_bam_or_cram} ":"")."-out {$methylation_table} -build {$build} -regions {$methyl_regions} -threads {$threads} --log ".$parser->getLogFile());
-	}
 }
 
 // paralogous gene calling
@@ -943,6 +932,40 @@ if (in_array("an", $steps))
 	}
 }
 
+// INFO: done after annotation to have phasing track available
+// methylation calling
+if (in_array("me", $steps))
+{
+	if (!contains_methylation($used_bam_or_cram)) trigger_error("BAM file doesn't contain methylation info! Skipping step 'me'", E_USER_WARNING);
+	else 
+	{
+		$args = [];
+		$args[] = "-folder {$folder}";
+		$args[] = "-name {$name}";
+		if (ends_with($used_bam_or_cram, ".bam")) $args[] = "-local_bam {$used_bam_or_cram}";
+		$args[] = "-out {$methylation_table}";
+		$args[] = "-build {$build}";
+		$args[] = "-threads {$threads}";
+		$args[] = "--log ".$parser->getLogFile();
+		if ($test)
+		{
+			$args[] = "-regions ".repository_basedir()."/test/data/create_methyl_plot_regions_pipeline_test.tsv";
+			$args[] = "-custom_cohort_table ".repository_basedir()."/test/data/create_methyl_plot_custom_cohort.tsv";
+			$args[] = "-test";
+		}
+		else
+		{
+			$args[] = "-regions {$methyl_regions}";
+		}
+		$parser->execTool("Tools/create_methyl_plot.php", implode(" ", $args));
+		
+		// create Epigen TSV file
+		$epic_id_file = get_path("data_folder")."/dbs/illumina-epicids/EPIC-8v2-0_A1.csv";
+		$parser->execApptainer("ngs-bits", "BedToEpigen", "-in {$modkit_track} -out {$epigen_tsv} -id_file {$epic_id_file} -sample {$name}", [$epic_id_file, $modkit_track], [dirname($epigen_tsv)]);
+		
+	}
+}
+
 // collect other QC terms - if CNV or SV calling was done
 if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps) || in_array("an", $steps)))
 {
@@ -1132,7 +1155,7 @@ if (in_array("db", $steps))
 					trigger_error("GSvar file {$ps_gsvar} not found! Skipping sample similarity check", E_USER_WARNING);
 					continue;
 				}
-				$output = $parser->execApptainer("ngs-bits", "SampleSimilarity", "-in {$var_file} {$ps_gsvar} -mode gsvar -build ".ngsbits_build($sys['build']), [$folder, $ps_gsvar]);
+				$output = $parser->execApptainer("ngs-bits", "SampleSimilarity", "-in {$var_file} {$ps_gsvar} -mode gsvar -ref {$genome} -build ".ngsbits_build($sys['build']), [$folder, $ps_gsvar, $genome]);
 				$correlation = explode("\t", $output[0][1])[3];
 				if ($correlation<$min_corr)
 				{
