@@ -91,7 +91,7 @@ $cram_file = $folder."/".$name.".cram";
 $used_bam_or_cram = ""; //BAM/CRAM file used for calling etc. This is a local tmp file if mapping was done and a file in the output folder if no mapping was done
 // $unmapped_bam_file = $folder."/".$name.".mod.unmapped.bam";
 $lowcov_file = $folder."/".$name."_".$sys["name_short"]."_lowcov.bed";
-//methylation 
+//methylation
 $modkit_track = $folder."/".$name."_modkit_track.bed.gz";
 $modkit_summary = $folder."/".$name."_modkit_summary.txt";
 //variant calling
@@ -133,21 +133,23 @@ if(!$check_chrs) trigger_error("Target region does not cover whole genome. Canno
 //mapping
 if (in_array("ma", $steps))
 {
-	//determine input FASTQ and BAM files
-	$unmapped_pattern = "{$sample_name}_??.mod.unmapped.bam";
+    //determine input FASTQ and BAM files
+	$unmapped_pattern = "*.mod.unmapped.bam";
 	$unmapped_bam_files = glob("{$folder}/{$unmapped_pattern}");
-	$old_bam_files = array_merge(glob("{$folder}/{$sample_name}_??.bam"), glob("{$folder}/{$sample_name}_??.cram"));
+	$bam_pattern = "{$sample_name}_??.bam";
+	$bam_files = glob("{$folder}/{$bam_pattern}");
 	$fastq_pattern = "{$sample_name}_??*.fastq.gz";
 	$fastq_files = glob("{$folder}/{$fastq_pattern}");
+
 	// preference:
 	// 1. mod unmapped bam
 	// 2. regular bam/cram
-	// 3. fastq	
+	// 3. fastq
 	if ((count($unmapped_bam_files) === 0) && (count($old_bam_files) === 0) && (count($fastq_files) === 0))
 	{
 		trigger_error("Found no input read files in BAM or FASTQ format!\nExpected file names are: unmapped BAM '{$unmapped_pattern}', mapped bam '{$sample_name}_??.[bam|cram]' or FASTQs '{$fastq_pattern}'", E_USER_ERROR);
 	}
-	
+
 	// run mapping
 	$mapping_minimap_options = [
 		"-sample {$name}",
@@ -166,13 +168,13 @@ if (in_array("ma", $steps))
 	{
 		$mapping_minimap_options[] = "-out {$cram_file}";
 		//create separate tmp folder with correct BamFile name to prevent problems with tools which uses this name as sample name:
-		$local_bam = $parser->tempFolder("local_bam")."/".$name.".bam"; 
+		$local_bam = $parser->tempFolder("local_bam")."/".$name.".bam";
 		$mapping_minimap_options[] = "-local_bam {$local_bam}";
 		$used_bam_or_cram = $local_bam;
 	}
 	if (count($unmapped_bam_files) > 0)
 	{
-		$mapping_minimap_options[] = "-in_bam " . implode(" ", $unmapped_bam_files);	
+		$mapping_minimap_options[] = "-in_bam " . implode(" ", $unmapped_bam_files);
 	}
 	elseif (count($old_bam_files) > 0)
 	{
@@ -181,7 +183,7 @@ if (in_array("ma", $steps))
 		$mapping_folder = "{$folder}/bams_for_mapping/";
 		$parser->exec("mkdir", $mapping_folder);
 
-		foreach ($old_bam_files as $old_bam) 
+		foreach ($old_bam_files as $old_bam)
 		{
 			$basename = basename($old_bam);
 			$parser->moveFile($old_bam, $mapping_folder.$basename);
@@ -193,7 +195,7 @@ if (in_array("ma", $steps))
 	{
 		$mapping_minimap_options[] = "-in_fastq " . implode(" ", $fastq_files);
 	}
-	
+
 	$parser->execTool("Tools/mapping_minimap.php", implode(" ", $mapping_minimap_options));
 
 	// create methylation track
@@ -216,8 +218,8 @@ if (in_array("ma", $steps))
 	}
 
 	//check if BAM/CRAM exist and have a appropriete size
-	$bam_exists = file_exists($bam_file) && file_exists($bam_file.".bai"); 
-	$cram_exists = file_exists($cram_file) && file_exists($cram_file.".crai"); 
+	$bam_exists = file_exists($bam_file) && file_exists($bam_file.".bai");
+	$cram_exists = file_exists($cram_file) && file_exists($cram_file.".crai");
 
 	//get mapped read count
 	if ($cram_exists) $rc_mapped_bam = get_read_count($cram_file, max(8, $threads), array("-F", "2304"), $sys['build']);
@@ -230,7 +232,7 @@ if (in_array("ma", $steps))
 	{
 		//check read counts of bams
 		$rc_old = 0;
-		foreach ($old_bam_files_moved as $old_bam) 
+		foreach ($old_bam_files_moved as $old_bam)
 		{
 			$read_count = get_read_count($old_bam, max(8, $threads), array("-F", "2304"), $sys['build']);
 			trigger_error("Previous BAM/CRAM file read counts (".$old_bam."): ".$read_count, E_USER_NOTICE);
@@ -269,8 +271,8 @@ if (in_array("ma", $steps))
 				$preserve_fastqs = $info['preserve_fastqs'];
 			}
 		}
-		
-		
+
+
 		if(!$preserve_fastqs)
 		{
 			//get read count of input files
@@ -278,7 +280,7 @@ if (in_array("ma", $steps))
 			{
 				//check read counts of bams
 				$rc_unmapped = 0;
-				foreach ($unmapped_bam_files as $unmapped_bam_file) 
+				foreach ($unmapped_bam_files as $unmapped_bam_file)
 				{
 					$read_count = get_read_count($unmapped_bam_file, max(8, $threads), array(), $sys['build']);
 					trigger_error("Unmapped BAM file read counts (".$unmapped_bam_file."): ".$read_count, E_USER_NOTICE);
@@ -294,7 +296,7 @@ if (in_array("ma", $steps))
 					// remove unmapped BAM(s)
 					if ($rc_mapped_bam == $rc_unmapped) trigger_error("Read count of mapped and unmapped BAM(s) match. Deleting unmapped BAM(s)...", E_USER_NOTICE);
 					if ($rel_diff < 0.0001) trigger_error("Read count of mapped and unmapped BAM(s) in allowed tolerance (<0.01%) (".($rel_diff*100)."%). Deleting unmapped BAM(s)...", E_USER_NOTICE);
-					foreach ($unmapped_bam_files as $unmapped_bam_file) 
+					foreach ($unmapped_bam_files as $unmapped_bam_file)
 					{
 						unlink($unmapped_bam_file);
 						trigger_error("Unmapped BAM file removed!", E_USER_NOTICE);
@@ -310,7 +312,7 @@ if (in_array("ma", $steps))
 			{
 				//check read counts of bams
 				$rc_unmapped = 0;
-				foreach ($fastq_files as $fastq_file) 
+				foreach ($fastq_files as $fastq_file)
 				{
 					$rc_pipeline = array();
 					$rc_pipeline[] = array("zcat", $fastq_file);
@@ -330,7 +332,7 @@ if (in_array("ma", $steps))
 					// remove unmapped BAM(s)
 					if ($rc_mapped_bam == $rc_unmapped) trigger_error("Read count of mapped and FastQ(s) match. Deleting unmapped BAM(s)...", E_USER_NOTICE);
 					if ($rel_diff < 0.0001) trigger_error("Read count of mapped BAM and FastQ(s) in allows tolerance (<0.01%) (".($rel_diff*100)."%). Deleting FastQ(s)...", E_USER_NOTICE);
-					foreach ($fastq_files as $fastq_file) 
+					foreach ($fastq_files as $fastq_file)
 					{
 						unlink($fastq_file);
 						trigger_error("FastQ file removed!", E_USER_NOTICE);
@@ -345,7 +347,7 @@ if (in_array("ma", $steps))
 			{
 				trigger_error("No FastQ/unmapped BAMs found!", E_USER_WARNING);
 			}
-				
+
 		}
 	}
 }
@@ -356,7 +358,7 @@ else
 	$bam_output = file_exists($bam_file);
 
 	if(!file_exists($used_bam_or_cram)) trigger_error("BAM/CRAM file not found!", E_USER_ERROR);
-	
+
 	//check genome build of BAM
 	check_genome_build($used_bam_or_cram, $build);
 }
@@ -365,7 +367,7 @@ else
 //check gender after mapping
 if(db_is_enabled("NGSD") && !$no_gender_check)
 {
-	$parser->execTool("Tools/db_check_gender.php", "-in $used_bam_or_cram -pid $name");	
+	$parser->execTool("Tools/db_check_gender.php", "-in $used_bam_or_cram -pid $name");
 }
 
 //variant calling
@@ -429,15 +431,15 @@ if (in_array("vc", $steps))
 			$basecall_model_path = get_path("clair3_models")."/r1041_e82_400bps_hac_g632/";
 
 			trigger_error("Basecall info found in BAM file ('{$basecall_model}'). Using model at '{$basecall_model_path}' (special case).", E_USER_NOTICE);
-		} 
+		}
 		else if ($basecall_model == "dna_r9.4.1_e8_hac@v3.3")
 		{
 			$basecall_model_path = get_path("clair3_models")."/r941_prom_hac_g360+g422/";
 
 			trigger_error("Basecall info found in BAM file ('{$basecall_model}'). Using model at '{$basecall_model_path}' (special case).", E_USER_NOTICE);
-		} 
+		}
 		//all new models can be directly derived
-		else 
+		else
 		{
 			$reformated_model_str = strtr($basecall_model, array("dna_" => "", "." => "", "@" => "_"));
 			$basecall_model_path = get_path("clair3_models")."/".$reformated_model_str."/";
@@ -460,7 +462,7 @@ if (in_array("vc", $steps))
 		$args[] = "--log ".$parser->getLogFile();
 		$args[] = "-model ".$basecall_model_path;
 		if ($gpu) $args[] = "-gpu";
-		
+
 		$parser->execTool("Tools/vc_clair.php", implode(" ", $args));
 	}
 
@@ -503,7 +505,7 @@ if (in_array("cn", $steps))
 	}
 	$cov_folder = $bin_folder;
 
-	
+
 	//create BED file with GC and gene annotations - if missing
 	$bed = $ref_folder."/bins{$cnv_bin_size}.bed";
 	if (!file_exists($bed))
@@ -523,7 +525,7 @@ if (in_array("cn", $steps))
 	$cov_tmp = $cov_tmp_unzipped.".gz";
 	$parser->execApptainer("ngs-bits", "BedCoverage", "-clear -min_mapq 0 -decimals 4 -bam {$used_bam_or_cram} -in {$bed} -out {$cov_tmp_unzipped} -threads {$threads} -ref {$genome}", [$folder, $bed, $genome]);
 	$parser->exec("gzip", "-9 {$cov_tmp_unzipped}");
-	
+
 	//copy coverage file to reference folder if valid
 	if (db_is_enabled("NGSD") && is_valid_ref_sample_for_cnv_analysis($name))	{
 		$parser->log("Moving coverage file to reference folder...");
@@ -532,7 +534,7 @@ if (in_array("cn", $steps))
 	{
 		$cov_file = $cov_tmp;
 	}
-	
+
 	//perform CNV analysis
 	$cnv_out = $tmp_folder."/output.tsv";
 	$cnv_out2 = $tmp_folder."/output.seg";
@@ -546,9 +548,9 @@ if (in_array("cn", $steps))
 		"-max_cnvs 2000",
 		"-mosaic"
 	);
-	
+
 	$parser->execTool("Tools/vc_clincnv_germline.php", implode(" ", $args), true);
-	
+
 	//copy results to output folder
 	if (file_exists($cnv_out)) $parser->moveFile($cnv_out, $cnv_file);
 	if (file_exists($cnv_out2)) $parser->moveFile($cnv_out2, $cnv_file2);
@@ -578,7 +580,7 @@ if (in_array("ph", $steps))
 	add_missing_contigs_to_vcf($sys['build'], $tmp_vcf);
 	$parser->execApptainer("htslib", "bgzip", "-c {$tmp_vcf} > {$vcf_file}", [], [dirname($vcf_file)]);
 	$parser->execApptainer("htslib", "tabix", "-f -p vcf {$vcf_file}", [], [dirname($vcf_file)]);
-	
+
 	//check for methylation
 	$contains_methylation = contains_methylation($used_bam_or_cram);
 
@@ -614,13 +616,13 @@ if (in_array("ph", $steps))
 	if (file_exists($sv_vcf_file))
 	{
 		$args[] = "--sv-file {$sv_vcf_file}";
-	} 
-	if ($contains_methylation) 
+	}
+	if ($contains_methylation)
 	{
 		$args[] = "--mod-file {$vcf_modcall}";
 	}
 	$parser->execApptainer("longphase", "longphase", implode(" ", $args), [$folder, $genome], [$folder]);
-	
+
 	//create compressed file and index
 	$parser->execApptainer("htslib", "bgzip", "-c $phased_tmp > {$vcf_file}", [], [dirname($vcf_file)]);
 	$parser->execApptainer("htslib", "tabix", "-f -p vcf $vcf_file", [], [dirname($vcf_file)]);
@@ -630,7 +632,7 @@ if (in_array("ph", $steps))
 		$parser->execApptainer("htslib", "tabix", "-f -p vcf $sv_vcf_file", [], [dirname($sv_vcf_file)]);
 	}
 
-	//tag BAM file 
+	//tag BAM file
 	$args = array();
 	$args[] = "haplotag";
 	$args[] = "-s {$vcf_file}";
@@ -641,8 +643,8 @@ if (in_array("ph", $steps))
 	{
 		$args[] = "--sv-file {$sv_vcf_file}";
 		$in_files[] = $sv_vcf_file;
-	} 
-	
+	}
+
 	$tagged_bam_file = $parser->tempFile(".tagged.bam");
 	$args[] = "-o ".dirname($tagged_bam_file)."/".basename2($tagged_bam_file);
 
@@ -684,10 +686,10 @@ if (in_array("ph", $steps))
 		//convert bam to cram
 		$parser->execTool("Tools/bam_to_cram.php", "-bam {$tagged_bam_file} -cram {$cram_file} -build ".$sys['build']." -threads {$threads}");
 		$parser->indexBam($cram_file, $threads);
-		
+
 		//check if read counts of tagged and untagged CRAMs match
 		compare_bam_read_count($cram_file.".backup.cram", $cram_file, max(8, $threads), true, true, 0.0, array(), $sys['build']);
-		
+
 		//delete backup file
 		unlink($cram_file.".backup.cram");
 		unlink($cram_file.".backup.cram.crai");
@@ -710,7 +712,7 @@ if (in_array("re", $steps))
 if (in_array("me", $steps))
 {
 	if (!contains_methylation($used_bam_or_cram)) trigger_error("BAM file doesn't contain methylation info! Skipping step 'me'", E_USER_WARNING);
-	else 
+	else
 	{
 		$parser->execTool("Tools/create_methyl_plot.php", "-folder {$folder} -name {$name} ".(ends_with($used_bam_or_cram, ".bam")?"-local_bam {$used_bam_or_cram} ":"")."-out {$methylation_table} -build {$build} -regions {$methyl_regions} -threads {$threads} --log ".$parser->getLogFile());
 	}
@@ -743,7 +745,7 @@ if (in_array("an", $steps))
 
 		//check for truncated output
 		if ($check_chrs) $parser->execTool("Tools/check_for_missing_chromosomes.php", "-in {$vcf_file_annotated} -max_missing_perc 5");
-		
+
 		//ROH detection
 		$in_files = [];
 		$in_files[] = $folder;
@@ -761,7 +763,7 @@ if (in_array("an", $steps))
 		$args[] = "-annotate ".repository_basedir()."/data/gene_lists/genes.bed ".(file_exists($omim_file) ? $omim_file : "");
 		$parser->execApptainer("ngs-bits", "RohHunter", implode(" ", $args), $in_files);
 
-		//PRS calculation 
+		//PRS calculation
 		$prs_folder = repository_basedir()."/data/misc/prs/";
 		$prs_scoring_files = glob($prs_folder."/*_".$build.".vcf");
 		if (count($prs_scoring_files) > 0)
@@ -802,7 +804,7 @@ if (in_array("an", $steps))
 		{
 			$parser->execApptainer("ngs-bits", "CnvGeneAnnotation", "-in {$cnv_file} -add_simple_gene_names -out {$cnv_file}", [$folder]);
 		}
-		
+
 		//annotate overlap with pathogenic CNVs
 		if (db_is_enabled("NGSD"))
 		{
@@ -838,7 +840,7 @@ if (in_array("an", $steps))
 
 		// check file existance
 		$all_files_available = file_exists($ngsd_annotation_folder."sv_breakpoint_density.igv");
-		foreach ($ngsd_sv_files as $filename) 
+		foreach ($ngsd_sv_files as $filename)
 		{
 			if(!(file_exists($ngsd_annotation_folder.$filename) && file_exists($ngsd_annotation_folder.$filename.".tbi")))
 			{
@@ -848,7 +850,7 @@ if (in_array("an", $steps))
 		}
 		if ($all_files_available)
 		{
-			// store flat file modification date to detect changes during annotation 
+			// store flat file modification date to detect changes during annotation
 			foreach ($ngsd_sv_files as $filename)
 			{
 				$db_file_dates[$filename] = filemtime($ngsd_annotation_folder.$filename);
@@ -857,7 +859,7 @@ if (in_array("an", $steps))
 					trigger_error("Cannot get modification date of '".$ngsd_annotation_folder.$filename."'!",E_USER_ERROR);
 				}
 			}
-			
+
 			//perform annotation
 			$args = array(
 				"-in $bedpe_file",
@@ -870,12 +872,12 @@ if (in_array("an", $steps))
 			{
 				$db = DB::getInstance("NGSD", false);
 				$ps_id = get_processed_sample_id($db, $name, false);
-	
+
 				if ($ps_id != -1)
 				{
 					$args[] = "-ps_name $name";
 				}
-				else 
+				else
 				{
 					trigger_error("No processed sample ID found for sample ".$name.", skipping count annotation by disease group!", E_USER_WARNING);
 				}
@@ -892,7 +894,7 @@ if (in_array("an", $steps))
 			{
 				$parser->execApptainer("ngs-bits", "BedpeAnnotateBreakpointDensity", "-in {$bedpe_file} -out {$bedpe_file} -density {$ngsd_annotation_folder}sv_breakpoint_density.igv", [$folder, $ngsd_annotation_folder]);
 			}
-			
+
 
 			// check if files changed during annotation
 			foreach ($ngsd_sv_files as $filename)
@@ -913,9 +915,9 @@ if (in_array("an", $steps))
 		{
 			trigger_error("Cannot annotate NGSD counts! At least one required file in '{$ngsd_annotation_folder}' is missing!", E_USER_WARNING);
 		}
-		
+
 		//add optional OMIM annotation
-		$omim_file = get_path("data_folder")."/dbs/OMIM/omim.bed"; 
+		$omim_file = get_path("data_folder")."/dbs/OMIM/omim.bed";
 		if(file_exists($omim_file))//OMIM annotation (optional because of license)
 		{
 			$parser->execApptainer("ngs-bits", "BedpeAnnotateFromBed", "-in $bedpe_file -out $bedpe_file -bed $omim_file -url_decode -replace_underscore -col_name OMIM", [$folder, $omim_file]);
@@ -933,9 +935,9 @@ if (in_array("an", $steps))
 		//extract columns
 		$parser->execApptainer("ngs-bits", "BedpeExtractInfoField", "-in $bedpe_file -out $bedpe_file -info_fields SVLEN,SUPPORT,COVERAGE,AF", [$folder]);
 
-		//update sample entry 
-		update_gsvar_sample_header($bedpe_file, array($name=>"Affected"));	
-		
+		//update sample entry
+		update_gsvar_sample_header($bedpe_file, array($name=>"Affected"));
+
 		//check for truncated output
 		if ($check_chrs) $parser->execTool("Tools/check_for_missing_chromosomes.php", "-in {$bedpe_file}");
 	}
@@ -955,9 +957,9 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 		{
 			$terms[] = "QC:2000149\t{$basecall_model}";
 			$sources[] = $used_bam_or_cram;
-		}	
+		}
 	}
-	
+
 	//CNVs
 	if (file_exists($cnv_file))
 	{
@@ -970,7 +972,7 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 		{
 			$line = trim(fgets($h));
 			if ($line=="") continue;
-			
+
 			if (starts_with($line, "##mean correlation to reference samples:"))
 			{
 				$value = trim(explode(":", $line)[1]);
@@ -981,7 +983,7 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 				$value = trim(explode(":", $line)[1]);
 				$terms[] = "QC:2000115\t{$value}";
 			}
-			
+
 			if ($line[0]!="#")
 			{
 				$parts = explode("\t", $line);
@@ -989,7 +991,7 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 				if ($ll>=12) # changed to 12 for long-reads
 				{
 					++$cnv_count_hq;
-					
+
 					$chr = $parts[0];
 					if (is_numeric(strtr($chr, ["chr"=>""])))
 					{
@@ -1002,7 +1004,7 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 			}
 		}
 		fclose($h);
-		
+
 		//counts (all, loss, gain)
 		$terms[] = "QC:2000113\t{$cnv_count_hq}";
 		if ($cnv_count_hq_autosomes>0)
@@ -1010,7 +1012,7 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 			$terms[] = "QC:2000118\t".number_format(100.0*$cnv_count_loss/$cnv_count_hq_autosomes, 2);
 			$terms[] = "QC:2000119\t".number_format(100.0*$cnv_count_gain/$cnv_count_hq_autosomes, 2);
 		}
-		
+
 		$sources[] = $cnv_file;
 	}
 
@@ -1028,8 +1030,8 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 		{
 			$line = trim(fgets($h));
 			if ($line=="" || $line[0]=="#") continue;
-			
-			
+
+
 			$parts = explode("\t", $line);
 			$filter = trim($parts[11]);
 			if ($filter=="PASS")
@@ -1041,11 +1043,11 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 				if ($type=="INS") ++$sv_count_ins;
 				if ($type=="INV") ++$sv_count_inv;
 				if ($type=="BND") ++$sv_count_bnd;
-				
+
 			}
 		}
 		fclose($h);
-		
+
 		$terms[] = "QC:2000117\t{$sv_count_pass}";
 		if ($sv_count_pass>0)
 		{
@@ -1055,10 +1057,10 @@ if ((in_array("ma", $steps)) || (in_array("cn", $steps) || in_array("sv", $steps
 			$terms[] = "QC:2000123\t".number_format(100.0*$sv_count_inv/$sv_count_pass, 2);
 			$terms[] = "QC:2000124\t".number_format(100.0*$sv_count_bnd/$sv_count_pass, 2);
 		}
-		
+
 		$sources[] = $bedpe_file;
 	}
-	
+
 	if(count($sources) > 0)
 	{
 		//create qcML file
@@ -1093,11 +1095,11 @@ if (in_array("db", $steps))
 {
 	//import ancestry
 	if(file_exists($ancestry_file)) $parser->execTool("Tools/db_import_ancestry.php", "-id {$name} -in {$ancestry_file}");
-	
+
 	//import QC
 	$qc_files = array($qc_fastq, $qc_map);
-	if (file_exists($qc_vc)) $qc_files[] = $qc_vc; 
-	if (file_exists($qc_other)) $qc_files[] = $qc_other; 
+	if (file_exists($qc_vc)) $qc_files[] = $qc_vc;
+	if (file_exists($qc_other)) $qc_files[] = $qc_other;
 	$parser->execApptainer("ngs-bits", "NGSDImportSampleQC", "-ps $name -files ".implode(" ", $qc_files)." -force", [$folder]);
 
 	if (!$skip_wgs_check)
@@ -1106,7 +1108,7 @@ if (in_array("db", $steps))
 		list($stdout, $stderr, $exit_code) = $parser->execApptainer("ngs-bits", "NGSDSameSample", "-ps $name -system_type WGS,WES");
 		//parse stdout
 		$same_samples = array();
-		foreach ($stdout as $line) 
+		foreach ($stdout as $line)
 		{
 			if (starts_with($line, "#")) continue;
 			if (trim($line) == "") continue;
@@ -1116,13 +1118,13 @@ if (in_array("db", $steps))
 		if (count($same_samples) < 1)
 		{
 			trigger_error("No related WGS/WES sample found for {$name}. Cannot perform similarity check!", E_USER_WARNING);
-		} 
+		}
 		else
 		{
 			//check same-sample correlation for each WGS sample
 			$min_corr = 0.85;
 
-			foreach ($same_samples as $processed_sample) 
+			foreach ($same_samples as $processed_sample)
 			{
 				$ps_gsvar = trim($parser->execApptainer("ngs-bits", "SamplePath", "-ps {$processed_sample} -type GSVAR")[0][0]);
 				if (!file_exists($ps_gsvar))
@@ -1143,35 +1145,35 @@ if (in_array("db", $steps))
 			}
 		}
 	}
-	
+
 	//import variants
 	$args = [];
 	if (file_exists($var_file))
 	{
 		//check genome build
 		check_genome_build($var_file, $build);
-		
+
 		$args[] = "-var {$var_file}";
 	}
 	if (file_exists($cnv_file))
 	{
 		//check genome build
 		//this is not possible for CNVs because the file does not contain any information about it
-		
+
 		$args[] = "-cnv {$cnv_file}";
 	}
 	if (file_exists($bedpe_file))
 	{
 		//check genome build
 		check_genome_build($bedpe_file, $build);
-		
+
 		$args[] = "-sv {$bedpe_file}";
 	}
 	if (file_exists($straglr_file))
 	{
 		//check genome build
 		check_genome_build($straglr_file, $build);
-		
+
 		$args[] = "-re {$straglr_file}";
 	}
 	if (count($args)>0)
